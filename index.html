@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shivansh Keshari</title>
+<meta name="description" content="Shivansh Keshari, Senior Data Engineer: cloud-native batch pipelines on GCP and AWS with PySpark, BigQuery and Airflow.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a pipeline. The page reads left-to-right like a DAG: source -> transform -> serve,
+   with each job as a "task node" and metrics as run stats. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --ink: #141a2b;
+  --muted: #5a6378;
+  --line: #dde1ea;
+  --accent: #2a4bd7;
+  --accent-soft: #e6eafc;
+  --metric: #b45309;
+  --ok: #15803d;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1220; --surface: #161b2d; --ink: #e8ebf4; --muted: #9aa3b9;
+    --line: #283049; --accent: #8ea2ff; --accent-soft: #1f2748; --metric: #f5b14c; --ok: #4ade80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1220; --surface: #161b2d; --ink: #e8ebf4; --muted: #9aa3b9;
+  --line: #283049; --accent: #8ea2ff; --accent-soft: #1f2748; --metric: #f5b14c; --ok: #4ade80;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+}
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.15; text-wrap: balance; margin: 0; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px); }
+.mono { font-family: var(--font-mono); }
+
+/* Nav */
+nav {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; }
+.brand { font-family: var(--font-mono); font-size: 14px; color: var(--ink); text-decoration: none; }
+.brand b { color: var(--accent); font-weight: 500; }
+.navlinks { display: flex; gap: 20px; }
+.navlinks a { color: var(--muted); text-decoration: none; font-size: 14px; }
+.navlinks a:hover { color: var(--ink); }
+@media (max-width: 560px) { .navlinks a.hide-sm { display: none; } }
+
+/* Hero */
+.hero { padding: 64px 0 40px; display: grid; gap: 40px; }
+.status {
+  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 13px;
+  color: var(--muted); border: 1px solid var(--line); background: var(--surface);
+  padding: 4px 12px; border-radius: 999px;
+}
+.status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: block; }
+.hero h1 { font-size: clamp(40px, 7vw, 72px); font-weight: 700; letter-spacing: -0.02em; margin-top: 18px; }
+.hero .role { font-family: var(--font-display); font-size: clamp(20px, 2.6vw, 26px); color: var(--accent); font-weight: 500; margin-top: 6px; }
+.hero p.lede { max-width: 62ch; color: var(--muted); font-size: 18px; margin: 18px 0 0; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; font: 500 15px var(--font-body);
+  padding: 10px 18px; border-radius: 8px; text-decoration: none; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.btn:hover { border-color: var(--accent); }
+
+/* Pipeline strip */
+.pipeline {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px;
+  overflow-x: auto;
+}
+.pipeline-head { display: flex; justify-content: space-between; gap: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-bottom: 14px; flex-wrap: wrap; }
+.dag { display: flex; align-items: stretch; gap: 0; min-width: 760px; }
+.node {
+  flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--bg);
+  border-left: 3px solid var(--accent);
+}
+.node .k { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.node .v { font-weight: 600; margin-top: 2px; }
+.node .t { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.edge { width: 28px; flex: none; position: relative; }
+.edge::before { content: ""; position: absolute; left: 2px; right: 6px; top: 50%; border-top: 1.5px dashed var(--muted); }
+.edge::after { content: ""; position: absolute; right: 2px; top: calc(50% - 4px); border: 4px solid transparent; border-left: 6px solid var(--muted); }
+
+/* Metrics */
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.metric { background: var(--surface); padding: 18px 20px; }
+.metric .n { font-family: var(--font-display); font-size: 36px; font-weight: 700; color: var(--metric); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.metric .l { font-size: 14px; color: var(--muted); margin-top: 4px; }
+@media (max-width: 720px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+
+/* Sections */
+section { padding: 56px 0; border-top: 1px solid var(--line); }
+.sec-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 28px; flex-wrap: wrap; }
+.sec-head .idx { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
+.sec-head h2 { font-size: clamp(26px, 3.4vw, 34px); font-weight: 700; }
+.sec-head p { flex-basis: 100%; margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
+
+/* Projects */
+.projects { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 760px) { .projects { grid-template-columns: 1fr; } }
+.proj { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; display: flex; flex-direction: column; gap: 12px; }
+.proj.wide { grid-column: 1 / -1; }
+.proj-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.proj h3 { font-size: 21px; font-weight: 700; }
+.proj .where { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin-top: 4px; }
+.impact { font-family: var(--font-display); font-weight: 700; color: var(--metric); font-size: 26px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.impact small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 12px; color: var(--muted); text-align: right; }
+.proj dl { display: grid; grid-template-columns: 84px 1fr; gap: 6px 14px; margin: 0; font-size: 15px; }
+.proj dt { font-family: var(--font-mono); font-size: 12px; color: var(--muted); padding-top: 3px; text-transform: uppercase; letter-spacing: .05em; }
+.proj dd { margin: 0; }
+@media (max-width: 460px) { .proj dl { grid-template-columns: 1fr; } .proj dt { padding-top: 6px; } }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
+.tag { font-family: var(--font-mono); font-size: 12px; padding: 3px 9px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.yaml {
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.55; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px 14px; margin: 0; overflow-x: auto; color: var(--ink);
+}
+.yaml .c { color: var(--muted); } .yaml .key { color: var(--accent); } .yaml .s { color: var(--metric); }
+.proj-split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 760px) { .proj-split { grid-template-columns: 1fr; } }
+
+/* Experience */
+.timeline { display: grid; gap: 0; }
+.job { display: grid; grid-template-columns: 180px 1fr; gap: 24px; padding: 22px 0; border-bottom: 1px dashed var(--line); }
+.job:last-child { border-bottom: 0; }
+.job .when { font-family: var(--font-mono); font-size: 13px; color: var(--muted); padding-top: 4px; }
+.job .when .now { color: var(--ok); }
+.job h3 { font-size: 20px; font-weight: 700; }
+.job .co { color: var(--accent); font-weight: 500; }
+.job .loc { color: var(--muted); font-size: 14px; }
+.job ul { margin: 10px 0 0; padding-left: 18px; max-width: 70ch; }
+.job li { margin: 4px 0; }
+.job li strong { color: var(--metric); font-weight: 600; }
+@media (max-width: 640px) { .job { grid-template-columns: 1fr; gap: 6px; } }
+
+/* Skills */
+.skills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 820px) { .skills { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .skills { grid-template-columns: 1fr; } }
+.skill { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.skill h3 { font-size: 16px; font-family: var(--font-mono); font-weight: 500; color: var(--muted); }
+.skill .tags { margin-top: 10px; }
+.skill .tag { background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+
+.edu { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+.edu h3 { font-size: 19px; }
+.edu p { margin: 4px 0 0; color: var(--muted); }
+
+/* Contact */
+.contact { display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; align-items: center; }
+@media (max-width: 720px) { .contact { grid-template-columns: 1fr; } }
+.contact h2 { font-size: clamp(28px, 4vw, 42px); }
+.contact p { color: var(--muted); max-width: 52ch; }
+.contact-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.row .k { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.row .v { font-weight: 500; word-break: break-all; }
+.copy { font: 500 13px var(--font-body); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--muted); font-size: 13px; font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top">shivansh<b>.</b>keshari</a>
+    <div class="navlinks">
+      <a href="#work">Work</a>
+      <a href="#experience">Experience</a>
+      <a href="#skills" class="hide-sm">Skills</a>
+      <a href="#contact">Contact</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap hero" id="top">
+  <div>
+    <span class="status"><i></i>Senior Data Engineer · Gurugram, India</span>
+    <h1>Shivansh Keshari</h1>
+    <div class="role">I build batch data pipelines that run on time, every time.</div>
+    <p class="lede">6+ years designing cloud-native ETL/ELT on GCP and AWS with PySpark, SQL, BigQuery and Airflow. I own projects end to end, from solution design through production deployment, with data quality, monitoring and SLAs built in from day one.</p>
+    <div class="cta">
+      <a class="btn primary" href="#work">See selected work</a>
+      <a class="btn" href="mailto:eshukeshari@gmail.com">eshukeshari@gmail.com</a>
+      <a class="btn" href="https://www.linkedin.com/search/results/people/?keywords=Shivansh%20Keshari" target="_blank" rel="noopener">LinkedIn ↗</a>
+    </div>
+  </div>
+
+  <div class="pipeline" aria-label="Typical pipeline I build">
+    <div class="pipeline-head"><span>dag_id: typical_pipeline</span><span>schedule: @daily · sla: met</span></div>
+    <div class="dag">
+      <div class="node"><div class="k">source</div><div class="v">GCS · S3 · Pub/Sub</div><div class="t">Structured &amp; semi-structured</div></div>
+      <div class="edge" aria-hidden="true"></div>
+      <div class="node"><div class="k">validate</div><div class="v">DQ checks</div><div class="t">Audit rules, schema</div></div>
+      <div class="edge" aria-hidden="true"></div>
+      <div class="node"><div class="k">transform</div><div class="v">PySpark · SQL</div><div class="t">Dataproc · EMR · Glue</div></div>
+      <div class="edge" aria-hidden="true"></div>
+      <div class="node"><div class="k">serve</div><div class="v">BigQuery</div><div class="t">Modeled, partitioned</div></div>
+      <div class="edge" aria-hidden="true"></div>
+      <div class="node"><div class="k">observe</div><div class="v">Alerts &amp; RCA</div><div class="t">CloudWatch · SNS</div></div>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><div class="n">6+</div><div class="l">years in data engineering</div></div>
+    <div class="metric"><div class="n">−65%</div><div class="l">runtime on a critical BigQuery job</div></div>
+    <div class="metric"><div class="n">−40%</div><div class="l">PySpark job runtime after tuning</div></div>
+    <div class="metric"><div class="n">−30%</div><div class="l">compute cost on the same jobs</div></div>
+  </div>
+</header>
+
+<main>
+<section id="work">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="idx">01</span><h2>Selected work</h2>
+      <p>Data engineering projects I designed and delivered, with the problem, my approach and the result.</p>
+    </div>
+
+    <div class="projects">
+      <article class="proj wide">
+        <div class="proj-top">
+          <div><h3>DAG Crafter: config-driven Airflow framework</h3><div class="where">Impetus · 2025–present</div></div>
+          <div class="impact">YAML → DAG<small>no hand-written DAGs</small></div>
+        </div>
+        <div class="proj-split">
+          <dl>
+            <dt>Problem</dt><dd>Every new pipeline meant writing, testing and deploying a bespoke Airflow DAG, and one change could ripple across others.</dd>
+            <dt>Approach</dt><dd>Designed a framework that generates Airflow DAGs dynamically from YAML configs, so each pipeline is declared as data and isolated from the rest.</dd>
+            <dt>Result</dt><dd>Significantly less development, testing and deployment effort, faster iteration, and pipeline changes that stay contained.</dd>
+          </dl>
+          <pre class="yaml" aria-label="Illustrative config"><span class="c"># illustrative pipeline config</span>
+<span class="key">dag_id:</span> <span class="s">orders_daily</span>
+<span class="key">schedule:</span> <span class="s">"0 2 * * *"</span>
+<span class="key">tasks:</span>
+  - <span class="key">id:</span> <span class="s">load_raw</span>
+    <span class="key">type:</span> <span class="s">gcs_to_bq</span>
+  - <span class="key">id:</span> <span class="s">transform</span>
+    <span class="key">type:</span> <span class="s">bq_sql</span>
+    <span class="key">depends_on:</span> [<span class="s">load_raw</span>]
+  - <span class="key">id:</span> <span class="s">dq_check</span>
+    <span class="key">type:</span> <span class="s">quality</span>
+    <span class="key">depends_on:</span> [<span class="s">transform</span>]</pre>
+        </div>
+        <div class="tags"><span class="tag">Airflow</span><span class="tag">Python</span><span class="tag">YAML</span><span class="tag">GCP</span></div>
+      </article>
+
+      <article class="proj">
+        <div class="proj-top">
+          <div><h3>BigQuery job optimization</h3><div class="where">Impetus</div></div>
+          <div class="impact">−65%<small>execution time</small></div>
+        </div>
+        <dl>
+          <dt>Problem</dt><dd>A business-critical BigQuery job was slow and holding up downstream pipelines.</dd>
+          <dt>Approach</dt><dd>Profiled the job and reworked its query logic and data access patterns.</dd>
+          <dt>Result</dt><dd>Execution time down 65%, with better pipeline performance and operational efficiency.</dd>
+        </dl>
+        <div class="tags"><span class="tag">BigQuery</span><span class="tag">SQL</span><span class="tag">Performance</span></div>
+      </article>
+
+      <article class="proj">
+        <div class="proj-top">
+          <div><h3>PII encryption lifecycle</h3><div class="where">Impetus</div></div>
+          <div class="impact">End to end<small>secure PII handling</small></div>
+        </div>
+        <dl>
+          <dt>Problem</dt><dd>Legacy pipelines carried sensitive PII without proper protection.</dd>
+          <dt>Approach</dt><dd>Wrapped the legacy designs with encryption and decryption, including runtime decryption only where it is needed.</dd>
+          <dt>Result</dt><dd>Full lifecycle management of sensitive data without rewriting existing pipelines.</dd>
+        </dl>
+        <div class="tags"><span class="tag">Data security</span><span class="tag">Python</span><span class="tag">GCP</span></div>
+      </article>
+
+      <article class="proj">
+        <div class="proj-top">
+          <div><h3>Legacy ETL migration to GCP</h3><div class="where">Impetus</div></div>
+          <div class="impact">Shell → GCP<small>logic preserved</small></div>
+        </div>
+        <dl>
+          <dt>Problem</dt><dd>Core ETL frameworks were written in shell scripts and hard to scale or maintain.</dd>
+          <dt>Approach</dt><dd>Designed the solution and supported an incremental migration to GCP, keeping existing business logic intact.</dd>
+          <dt>Result</dt><dd>A modernized stack, delivered from requirements to production with functional, technical and performance goals met.</dd>
+        </dl>
+        <div class="tags"><span class="tag">GCP</span><span class="tag">Dataproc</span><span class="tag">BigQuery</span><span class="tag">Airflow</span></div>
+      </article>
+
+      <article class="proj">
+        <div class="proj-top">
+          <div><h3>PySpark performance tuning</h3><div class="where">Infosys</div></div>
+          <div class="impact">−40% / −30%<small>runtime / compute cost</small></div>
+        </div>
+        <dl>
+          <dt>Problem</dt><dd>Large batch jobs on structured and semi-structured data were missing SLAs and costing too much.</dd>
+          <dt>Approach</dt><dd>Partition pruning, better partitioning, join improvements, and profiling to remove unneeded shuffles and scans.</dd>
+          <dt>Result</dt><dd>40% faster runs and 30% lower compute costs, with strict SLAs met.</dd>
+        </dl>
+        <div class="tags"><span class="tag">PySpark</span><span class="tag">Spark</span><span class="tag">AWS EMR</span><span class="tag">SQL</span></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="experience">
+  <div class="wrap">
+    <div class="sec-head"><span class="idx">02</span><h2>Experience</h2></div>
+    <div class="timeline">
+      <div class="job">
+        <div class="when">Aug 2025 – <span class="now">Present</span></div>
+        <div>
+          <h3>Senior Software Engineer</h3>
+          <div><span class="co">Impetus</span> <span class="loc">· Gurugram, Haryana</span></div>
+          <ul>
+            <li>Built the config-driven DAG Crafter framework that generates Airflow DAGs from YAML.</li>
+            <li>Added encryption and decryption around legacy designs for secure, end-to-end PII handling.</li>
+            <li>Cut a critical BigQuery job's execution time by <strong>65%</strong>.</li>
+            <li>Designed and supported the migration of shell-script ETL frameworks to GCP.</li>
+            <li>Delivered the project from requirements through production deployment.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="job">
+        <div class="when">Jun 2021 – Aug 2025</div>
+        <div>
+          <h3>Digital Specialist Engineer</h3>
+          <div><span class="co">Infosys</span> <span class="loc">· Gurugram, Haryana</span></div>
+          <ul>
+            <li>Built and maintained ETL and batch pipelines for timely, high-quality data delivery.</li>
+            <li>Optimized PySpark jobs, cutting runtime by <strong>40%</strong> and compute costs by <strong>30%</strong>.</li>
+            <li>Automated repetitive tasks with workflow orchestration, reducing manual effort and failures.</li>
+            <li>Added validation checks and audit rules to improve data quality and consistency.</li>
+            <li>Designed data models, schema definitions and integration logic for new sources.</li>
+            <li>Ran A/B tests to compare feature performance and support data-driven decisions.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="job">
+        <div class="when">Apr 2021 – Jun 2021</div>
+        <div>
+          <h3>Junior Software Engineer</h3>
+          <div><span class="co">Zensar Technologies</span> <span class="loc">· Pune, Maharashtra</span></div>
+          <ul>
+            <li>Wrote Python automation scripts that made key pipeline processes more reliable.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="job">
+        <div class="when">Dec 2020 – Mar 2021</div>
+        <div>
+          <h3>Project Trainee</h3>
+          <div><span class="co">Zensar Technologies</span> <span class="loc">· Pune, Maharashtra</span></div>
+          <ul>
+            <li>Automated data cleaning and transformation in Python, improving data quality.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="job">
+        <div class="when">Jan 2020 – Oct 2020</div>
+        <div>
+          <h3>Graduate Engineering Trainee</h3>
+          <div><span class="co">Nineleaps Technology</span> <span class="loc">· Bengaluru, Karnataka</span></div>
+          <ul>
+            <li>Built a React-Redux app for internal employee surveys, with unit tests.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="skills">
+  <div class="wrap">
+    <div class="sec-head"><span class="idx">03</span><h2>Skills</h2></div>
+    <div class="skills">
+      <div class="skill"><h3>GCP</h3><div class="tags"><span class="tag">BigQuery</span><span class="tag">Dataproc</span><span class="tag">Airflow</span><span class="tag">Dataflow</span><span class="tag">GCS</span><span class="tag">Pub/Sub</span><span class="tag">Cloud Functions</span></div></div>
+      <div class="skill"><h3>AWS</h3><div class="tags"><span class="tag">EMR</span><span class="tag">Glue</span><span class="tag">Lambda</span><span class="tag">S3</span><span class="tag">EC2</span><span class="tag">CloudWatch</span><span class="tag">DynamoDB</span><span class="tag">SNS</span></div></div>
+      <div class="skill"><h3>Big data</h3><div class="tags"><span class="tag">Apache Spark</span><span class="tag">PySpark</span><span class="tag">Hadoop</span><span class="tag">Hive</span><span class="tag">Dataiku</span></div></div>
+      <div class="skill"><h3>Languages</h3><div class="tags"><span class="tag">Python</span><span class="tag">SQL</span></div></div>
+      <div class="skill"><h3>Reliability &amp; ops</h3><div class="tags"><span class="tag">Data quality checks</span><span class="tag">Monitoring &amp; alerting</span><span class="tag">GitHub Actions</span><span class="tag">SLAs</span><span class="tag">Incident mgmt &amp; RCA</span></div></div>
+      <div class="skill"><h3>Tools</h3><div class="tags"><span class="tag">Git</span><span class="tag">Linux</span><span class="tag">VS Code</span><span class="tag">Jupyter</span><span class="tag">Excel</span></div></div>
+    </div>
+    <div style="margin-top:24px" class="edu">
+      <div><h3>B.Tech, Computer Science and Engineering</h3><p>DIT University, Dehradun · CGPA 7.25</p></div>
+      <div class="mono" style="color:var(--muted);font-size:14px">2016 – 2020</div>
+    </div>
+  </div>
+</section>
+
+<section id="contact">
+  <div class="wrap contact">
+    <div>
+      <h2>Have a pipeline that needs building or fixing?</h2>
+      <p>I'm happy to talk about data engineering roles, platform migrations, or performance problems in Spark and BigQuery.</p>
+    </div>
+    <div class="contact-card">
+      <div class="row">
+        <div><div class="k">Email</div><div class="v"><a href="mailto:eshukeshari@gmail.com">eshukeshari@gmail.com</a></div></div>
+        <button class="copy" id="copy-email" type="button">Copy</button>
+      </div>
+      <div class="row">
+        <div><div class="k">LinkedIn</div><div class="v"><a href="https://www.linkedin.com/search/results/people/?keywords=Shivansh%20Keshari" target="_blank" rel="noopener">Shivansh Keshari ↗</a></div></div>
+      </div>
+      <div class="row">
+        <div><div class="k">Based in</div><div class="v">Gurugram, India</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer><div class="wrap">© 2026 Shivansh Keshari · Senior Data Engineer</div></footer>
+
+<script>
+document.getElementById('copy-email').addEventListener('click', async function () {
+  const btn = this;
+  try { await navigator.clipboard.writeText('eshukeshari@gmail.com'); btn.textContent = 'Copied'; }
+  catch (e) { btn.textContent = 'Select the address to copy'; }
+  setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+});
+</script>
+</body>
+</html>
